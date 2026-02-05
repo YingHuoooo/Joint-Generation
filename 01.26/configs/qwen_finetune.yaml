@@ -1,0 +1,15 @@
+model:
+  name_or_path: Qwen/Qwen2.5-Coder-7B
+  max_length: 2048
+  use_flash_attention: true
+training:
+  batch_size: 2
+  gradient_accumulation: 8
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  num_epochs: 3
+  fp16: true
+  seed: 42
+data:
+  train_path: data/processed/train.pt
+  val_path: data/processed/val.pt

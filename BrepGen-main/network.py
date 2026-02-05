@@ -1065,16 +1065,24 @@ def sincos_embedding(input, dim, max_period=10000):
 
 class SurfPosNet(nn.Module):
     """
-    Transformer-based latent diffusion model for surface position
+    生成面 bbox 的扩散噪声预测器，带 EOS 头用于动态面数。
+    输入:
+      surfPos: [B, N, 6]
+      timesteps: [B] long
+      class_label: [B,1] or None
+    输出:
+      pred: 噪声预测 [B, N, 6]
+      eos_logit: [B, N]，sigmoid<0.5 视为“有效面”，>=0.5 视为“EOS/停码”
     """
-
     def __init__(self, use_cf):
         super(SurfPosNet, self).__init__()
         self.embed_dim = 768
         self.use_cf = use_cf
 
-        layer = nn.TransformerEncoderLayer(d_model=self.embed_dim, nhead=12, norm_first=True,
-                                                   dim_feedforward=1024, dropout=0.1)
+        layer = nn.TransformerEncoderLayer(
+            d_model=self.embed_dim, nhead=12, norm_first=True,
+            dim_feedforward=1024, dropout=0.1
+        )
         self.net = nn.TransformerEncoder(layer, 12, nn.LayerNorm(self.embed_dim))
 
         self.p_embed = nn.Sequential(
@@ -1082,7 +1090,7 @@ class SurfPosNet(nn.Module):
             nn.LayerNorm(self.embed_dim),
             nn.SiLU(),
             nn.Linear(self.embed_dim, self.embed_dim),
-        ) 
+        )
 
         self.time_embed = nn.Sequential(
             nn.Linear(self.embed_dim, self.embed_dim),
@@ -1098,32 +1106,49 @@ class SurfPosNet(nn.Module):
             nn.Linear(self.embed_dim, 6),
         )
 
+        # 新增：EOS 头
+        self.eos_head = nn.Sequential(
+            nn.Linear(self.embed_dim, self.embed_dim),
+            nn.SiLU(),
+            nn.Linear(self.embed_dim, 1),
+        )
+
         if self.use_cf:
             self.class_embed = Embedder(11, self.embed_dim)
 
-        return
-
-       
     def forward(self, surfPos, timesteps, class_label, is_train=False):
-        """ forward pass """
-        bsz = timesteps.size(0)
-        time_embeds = self.time_embed(sincos_embedding(timesteps, self.embed_dim)).unsqueeze(1)  
-        p_embeds = self.p_embed(surfPos)
-    
-        if self.use_cf:  # classifier-free
-            if is_train:
-                # randomly set 10% to uncond label
-                uncond_mask = torch.rand(bsz,1) <= 0.1  
-                class_label[uncond_mask] = 0
-            c_embeds = self.class_embed(class_label) 
-            tokens = p_embeds + time_embeds + c_embeds
-        else:
-            tokens = p_embeds + time_embeds
-       
-        output = self.net(src=tokens.permute(1,0,2)).transpose(0,1)
-        pred = self.fc_out(output)
+        B, N, _ = surfPos.shape
+        p = self.p_embed(surfPos)                     # [B,N,D]
+        t_emb = self.time_embed(self.timestep_embedding(timesteps, self.embed_dim))  # [B,D]
+        t_emb = t_emb[:, None, :].expand(-1, N, -1)
 
-        return pred
+        tokens = p + t_emb
+
+        if self.use_cf and class_label is not None:
+            c_emb = self.class_embed(class_label).expand(-1, N, -1)
+            tokens = tokens + c_emb
+
+        output = self.net(
+            src=tokens.permute(1,0,2),
+            src_key_padding_mask=None
+        ).transpose(0,1)
+
+        pred = self.fc_out(output)          # [B,N,6]
+        eos_logit = self.eos_head(output).squeeze(-1)  # [B,N]
+        return pred, eos_logit
+
+    @staticmethod
+    def timestep_embedding(timesteps, dim: int, max_period: int = 10000):
+        half = dim // 2
+        freqs = torch.exp(
+            -torch.log(torch.tensor(max_period, device=timesteps.device)) *
+            torch.arange(0, half, device=timesteps.device).float() / half
+        )
+        args = timesteps[:, None].float() * freqs[None]
+        emb = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+        if dim % 2:
+            emb = torch.cat([emb, torch.zeros_like(emb[:, :1])], dim=-1)
+        return emb
     
 
 class SurfZNet(nn.Module):

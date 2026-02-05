@@ -1,0 +1,5 @@
+fgw:
+  alpha: 0.5
+  beta: 0.5
+  loss_weight: 1.0
+  compute_every_n_steps: 4
