@@ -24,7 +24,7 @@ def read_region_file(filepath):
                 z = float(parts[2][1:])
                 points.append((x, y, z))
             except ValueError:
-                continue # 跳过解析错误的行
+                continue 
     return np.array(points)
 
 def arclength_parameterize(points):
