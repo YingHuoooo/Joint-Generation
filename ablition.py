@@ -1,76 +1,60 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# -----------------------
-# 1) 数据（与原图近似）
-# -----------------------
-x = np.arange(10, 101, 10)
-data = {
-    "Proposed": {"y": [10, 55, 60, 82, 90, 91, 90, 90, 91, 92],
-                 "e": [3, 15, 20, 4, 8, 5, 8, 6, 6, 4]},
-    "SAC+BC": {"y": [10, 50, 60, 52, 62, 65, 68, 72, 75, 80],
-               "e": [2, 25, 20, 25, 20, 20, 25, 10, 5, 10]},
-    "TD3+BC": {"y": [5, 50, 58, 60, 70, 68, 72, 70, 72, 74],
-               "e": [5, 10, 15, 25, 15, 20, 10, 15, 10, 10]},
-    "DSAC": {"y": [10, 35, 42, 50, 53, 59, 62, 66, 72, 78],
-             "e": [3, 10, 10, 15, 15, 12, 18, 15, 15, 10]},
-    "REDQ": {"y": [10, 25, 35, 40, 50, 51, 56, 60, 65, 70],
-             "e": [2, 20, 15, 20, 18, 15, 16, 20, 15, 20]},
-    "DDPG": {"y": [10, 27, 30, 41, 50, 53, 55, 60, 58, 59],
-             "e": [2, 25, 20, 25, 15, 15, 15, 20, 15, 10]},
-}
+# 1. 原始数据 (11列)
+raw_scores = np.array([
+    [0.1173, 0.3361, 0.5087, 0.6392, 0.7346, 0.8219, 0.8774, 0.9196, 0.9472, 0.9651, 0.9834],
+    [0.0187, 0.0749, 0.1835, 0.2976, 0.4152, 0.5418, 0.6294, 0.7071, 0.7829, 0.8306, 0.8623],
+    [0.0579, 0.2316, 0.3094, 0.2683, 0.4468, 0.3791, 0.5735, 0.4862, 0.6649, 0.5714, 0.7061],
+    [0.0826, 0.2137, 0.3719, 0.4893, 0.5907, 0.6482, 0.7075, 0.7426, 0.7708, 0.7914, 0.8032],
+])
 
-# -----------------------
-# 2) 全局风格（论文风）
-# -----------------------
-plt.rcParams.update({
-    "font.family": "Times New Roman",   # 如需其他字体可改
-    "font.size": 11,
-    "axes.titlesize": 13,
-    "axes.labelsize": 12,
-    "axes.titleweight": "bold",
-    "axes.spines.top": False,
-    "axes.spines.right": False,
-    "axes.linewidth": 0.8,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-    "legend.fontsize": 10,
-})
+# 2. 数据处理：11列 -> 10列
+col0_new = (raw_scores[:, 0] + raw_scores[:, 1]) / 2
+scores = np.column_stack((col0_new, raw_scores[:, 2:]))
 
-# -----------------------
-# 3) 作图
-# -----------------------
-fig, axes = plt.subplots(2, 3, figsize=(12.6, 7.2))
-axes = axes.ravel()
+# 横坐标标签：10个点
+steps = np.array([1e4, 2e4, 3e4, 4e4, 5e4, 6e4, 7e4, 8e4, 9e4, 1e5])
+labels = ["Full", "w/o BC", "w/o PBRS", "w/o PER"]
 
-line_color = "#2a6fbb"
-err_color = "#b0c4de"
+fig, ax = plt.subplots(figsize=(11, 4.5))
+im = ax.imshow(scores, aspect='auto', cmap='YlGnBu', vmin=0, vmax=1)
 
-for ax, (title, d) in zip(axes, data.items()):
-    y = d["y"]
-    e = d["e"]
+# 设置坐标轴
+ax.set_xticks(np.arange(len(steps)))
 
-    ax.errorbar(
-        x, y, yerr=e, fmt='-s',
-        color=line_color, markerfacecolor="white",
-        markeredgecolor=line_color, markersize=5,
-        ecolor=err_color, elinewidth=1.8, capsize=4
-    )
+# --- 修改点：增加 fontsize 参数调整 X 轴刻度字号 ---
+ax.set_xticklabels(
+    [f"{int(s/1e4)}e4" if s < 1e5 else "1e5" for s in steps], 
+    fontsize=14  # 这里调大 X 轴刻度字体
+)
 
-    ax.set_title(title, pad=6)
-    ax.set_xlim(0, 105)
-    ax.set_ylim(-5, 120)
+ax.set_yticks(np.arange(len(labels)))
+# --- 修改点：增加 fontsize 参数调整 Y 轴刻度字号 ---
+ax.set_yticklabels(
+    labels, 
+    fontsize=14  # 这里调大 Y 轴刻度字体
+)
 
-    ax.set_xlabel("Episode (×1000)")
-    ax.set_ylabel("Episode average reward")
+# 如果你需要恢复标题，建议也同步调大字体，例如 fontsize=14 或 16
+# ax.set_xlabel("Training Steps *1e4", fontsize=14)
+# ax.set_ylabel("Ablation Variants", fontsize=14)
+# ax.set_title("Ablation Heatmap", fontsize=16)
 
-    ax.axhline(100, color="red", linestyle="--", linewidth=1.0)
-    ax.text(2, 104, "Optimal", color="red", fontsize=11)
+# 画网格线
+ax.set_xticks(np.arange(-.5, len(steps), 1), minor=True)
+ax.set_yticks(np.arange(-.5, len(labels), 1), minor=True)
+ax.grid(which='minor', color='white', linestyle='-', linewidth=1)
 
-    ax.set_yticks([0, 20, 40, 60, 80, 100])
-    ax.set_yticklabels([f"{t}%" for t in [0, 20, 40, 60, 80, 100]])
+# 3. 标注数值
+for i in range(scores.shape[0]):
+    for j in range(scores.shape[1]):
+        val = scores[i, j]
+        text_color = 'white' if val > 0.6 else 'black'
+        
+        # 保持方块内的数字也足够大
+        ax.text(j, i, f"{val*100:.2f}%",
+                ha='center', va='center', color=text_color, fontsize=13, fontweight='medium')
 
-    ax.grid(axis="y", linestyle="--", linewidth=0.6, alpha=0.5)
-
-fig.tight_layout()
+plt.tight_layout()
 plt.show()
